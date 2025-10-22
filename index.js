@@ -50,6 +50,7 @@ client.on(Events.InteractionCreate, async interaction => {
   const data = mmData.get(ticketId);
   if (!data) return;
 
+  // Wybór roli
   if (interaction.customId === 'sender') {
     if (data.sender) return interaction.reply({ content: '❌ Nadawca został już wybrany.', ephemeral: true });
     data.sender = interaction.user.id;
@@ -64,6 +65,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return interaction.reply({ content: `✅ ${interaction.user} został oznaczony jako **ODBIORCA**.`, ephemeral: false });
   }
 
+  // Potwierdzenie roli
   if (interaction.customId === 'confirm_role') {
     if (interaction.user.id !== data.sender && interaction.user.id !== data.receiver) {
       return interaction.reply({ content: '❌ Najpierw wybierz swoją rolę.', ephemeral: true });
@@ -76,24 +78,10 @@ client.on(Events.InteractionCreate, async interaction => {
     data.confirmed.push(interaction.user.id);
     mmData.set(ticketId, data);
 
-    // Zmieniamy stan przycisku tylko dla klikającego
-    const newRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('sender').setLabel('📦 Nadawca').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('receiver').setLabel('📨 Odbiorca').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('confirm_role')
-        .setLabel('✅ Potwierdź')
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(data.confirmed.includes(interaction.user.id))
-    );
-
-    if (interaction.message.editable) {
-      await interaction.message.edit({ components: [newRow] });
-    }
-
+    // Potwierdzenie dla klikającego
     await interaction.reply({ content: '✅ Twoja rola została potwierdzona.', ephemeral: true });
 
-    // ➤ Jeśli oboje potwierdzili, wysyłamy embed nr 2
+    // Jeśli oboje potwierdzili, wysyłamy embed nr 2
     if (data.sender && data.receiver && data.confirmed.length === 2) {
       const embed2 = new EmbedBuilder()
         .setColor('#FFD700')
@@ -105,6 +93,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
+  // Pozostałe przyciski
   if (interaction.customId === 'copy_number') {
     return interaction.reply({
       content: '💛 DUKAAN MM\nNumer do wysłania środków: **698 962 262**',
