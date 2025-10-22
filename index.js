@@ -42,7 +42,7 @@ client.on(Events.MessageCreate, async message => {
   await ticketChannel.send({ embeds: [embed], components: [row] });
 });
 
-// ---------------- WYBÓR ROLI ----------------
+// ---------------- WYBÓR ROLI I POTWIERDZENIE ----------------
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isButton()) return;
 
@@ -76,7 +76,7 @@ client.on(Events.InteractionCreate, async interaction => {
     data.confirmed.push(interaction.user.id);
     mmData.set(ticketId, data);
 
-    // Zmieniamy stan przycisku Potwierdź tylko dla klikającego użytkownika
+    // Zmieniamy stan przycisku tylko dla klikającego
     const newRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('sender').setLabel('📦 Nadawca').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('receiver').setLabel('📨 Odbiorca').setStyle(ButtonStyle.Secondary),
@@ -91,10 +91,17 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.message.edit({ components: [newRow] });
     }
 
+    await interaction.reply({ content: '✅ Twoja rola została potwierdzona.', ephemeral: true });
+
+    // ➤ Jeśli oboje potwierdzili, wysyłamy embed nr 2
     if (data.sender && data.receiver && data.confirmed.length === 2) {
-      await interaction.reply({ content: '✅ Obie role zostały potwierdzone! Możecie kontynuować transakcję.', ephemeral: false });
-    } else {
-      await interaction.reply({ content: '✅ Rola została potwierdzona! Czekamy na drugiego użytkownika.', ephemeral: true });
+      const embed2 = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setDescription(
+          '```💛 DUKAAN MM```\n\nObie role zostały potwierdzone!\n📱 Nadawca może teraz podać kwotę, a Odbiorca numer telefonu.'
+        );
+
+      await interaction.channel.send({ embeds: [embed2] });
     }
   }
 
