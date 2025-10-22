@@ -1,184 +1,172 @@
-import {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  Events,
-} from "discord.js";
-import "dotenv/config";
+import { Client, GatewayIntentBits, Partials, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, Events } from 'discord.js';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-  ],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
-const sessions = new Map(); // <ticketId> => { senderId, receiverId, amount }
-
-const YELLOW = 0xffd700;
-const HEADER = "`　　　　　　💛 DUKAAN MM　　　　　　`";
+const mmData = new Map();
 
 client.once(Events.ClientReady, () => {
   console.log(`✅ Zalogowano jako ${client.user.tag}`);
 });
 
-client.on("messageCreate", async (message) => {
-  if (message.author.bot) return;
+// ---------------- KOMENDA STARTMM ----------------
+client.on(Events.MessageCreate, async message => {
+  if (!message.content.startsWith('!startmm') || message.author.bot) return;
+  const args = message.content.split(' ');
+  const ticketChannelId = args[1];
+  if (!ticketChannelId) return message.reply('❌ Podaj ID kanału ticketu.');
 
-  // --- START MM ---
-  if (message.content.startsWith("!startmm")) {
-    const args = message.content.split(" ");
-    const ticketId = args[1];
-    const ticket = message.guild.channels.cache.get(ticketId);
-    if (!ticket) return message.reply("❌ Nie znaleziono ticketu o tym ID.");
+  const ticketChannel = message.guild.channels.cache.get(ticketChannelId);
+  if (!ticketChannel) return message.reply('❌ Nie znaleziono kanału ticketu.');
 
-    const embed = new EmbedBuilder()
-      .setColor(YELLOW)
-      .setDescription(
-        `${HEADER}\n\nWybierz swoją rolę poniżej:\n\n` +
-          "🔸 **Nadawca** – osoba wysyłająca środki\n" +
-          "🔹 **Odbiorca** – osoba otrzymująca środki\n\n" +
-          "Po wyborze obie strony klikają **Potwierdź**."
-      );
+  mmData.set(ticketChannelId, { sender: null, receiver: null, amount: null, phone: null });
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("sender")
-        .setLabel("Jestem nadawcą")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("receiver")
-        .setLabel("Jestem odbiorcą")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("confirm")
-        .setLabel("Potwierdź")
-        .setStyle(ButtonStyle.Success)
-    );
+  const embed = new EmbedBuilder()
+    .setColor('#FFD700')
+    .setDescription('```💛 DUKAAN MM```\n\nWybierz swoją rolę w tej transakcji:')
+    .setFooter({ text: 'DUKAAN MM' });
 
-    sessions.set(ticketId, {});
-    await ticket.send({ embeds: [embed], components: [row] });
-    return message.reply("✅ Proces MM rozpoczęty na wybranym tickecie.");
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('sender').setLabel('📤 Nadawca').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('receiver').setLabel('📥 Odbiorca').setStyle(ButtonStyle.Secondary)
+  );
+
+  await ticketChannel.send({ embeds: [embed], components: [row] });
+});
+
+// ---------------- WYBÓR ROLI ----------------
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isButton()) return;
+
+  const ticketId = interaction.channel.id;
+  const data = mmData.get(ticketId);
+  if (!data) return;
+
+  if (interaction.customId === 'sender') {
+    if (data.sender) return interaction.reply({ content: '❌ Nadawca został już wybrany.', ephemeral: true });
+    data.sender = interaction.user.id;
+    mmData.set(ticketId, data);
+    return interaction.reply({ content: `✅ ${interaction.user} został oznaczony jako **NADAWCA**.`, ephemeral: false });
   }
 
-  // --- DETECT ---
-  if (message.content.startsWith("!detect")) {
-    const args = message.content.split(" ");
-    const amount = args.slice(1).join(" ");
-    if (!amount) return message.reply("Podaj kwotę, np. `!detect 475zł`.");
-
-    const [ticketId] = sessions.keys();
-    if (!ticketId) return message.reply("Nie znaleziono aktywnego ticketa.");
-
-    const ticket = message.guild.channels.cache.get(ticketId);
-    const embed = new EmbedBuilder()
-      .setColor(YELLOW)
-      .setDescription(
-        `${HEADER}\n\n💰 **Wykryto przesłane środki:** ${amount}\n\n` +
-          "Obie strony muszą potwierdzić poprawność kwoty, a nadawca kliknąć **Wyślij odbiorcy**."
-      );
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("sendToReceiver")
-        .setLabel("Wyślij odbiorcy")
-        .setStyle(ButtonStyle.Success)
-    );
-
-    await ticket.send({ embeds: [embed], components: [row] });
-    return message.reply("✅ Wysłano embed z wykryciem środków.");
+  if (interaction.customId === 'receiver') {
+    if (data.receiver) return interaction.reply({ content: '❌ Odbiorca został już wybrany.', ephemeral: true });
+    data.receiver = interaction.user.id;
+    mmData.set(ticketId, data);
+    return interaction.reply({ content: `✅ ${interaction.user} został oznaczony jako **ODBIORCA**.`, ephemeral: false });
   }
 
-  // --- FINALIZE ---
-  if (message.content.startsWith("!finalize")) {
-    const args = message.content.split(" ");
-    const phone = args[1];
-    if (!phone) return message.reply("Podaj numer, np. `!finalize 600123456`.");
-
-    const [ticketId] = sessions.keys();
-    if (!ticketId) return message.reply("Nie znaleziono aktywnego ticketa.");
-
-    const ticket = message.guild.channels.cache.get(ticketId);
-    const embed = new EmbedBuilder()
-      .setColor(YELLOW)
-      .setDescription(
-        `${HEADER}\n\n✅ **Środki wysłane na numer:** ${phone}\n💸 **Środki zostaną wysłane do 2 min.**`
-      );
-
-    await ticket.send({ embeds: [embed] });
-    return message.reply("✅ Wysłano końcowy embed na ticket.");
+  // 📋 Skopiuj numer
+  if (interaction.customId === 'copy_number') {
+    return interaction.reply({
+      content: '💛 DUKAAN MM\nNumer do wysłania środków: **698 962 262**',
+      ephemeral: true,
+    });
   }
 
-  // --- Odczytywanie kwoty od nadawcy ---
-  for (const [ticketId, data] of sessions.entries()) {
-    if (message.channel.id === ticketId && data.senderId === message.author.id) {
-      const match = message.content.match(/\d+(?:[.,]\d+)?\s*zł/gi);
-      if (match) {
-        const amount = match[0];
-        data.amount = amount;
-        await message.delete().catch(() => {});
-        const embed = new EmbedBuilder()
-          .setColor(YELLOW)
-          .setDescription(
-            `${HEADER}\n\n💸 **Wyślij środki na numer telefonu:** 698 962 262\n📦 **Kwota:** ${amount}`
-          );
-        await message.channel.send({ embeds: [embed] });
-      }
-    }
+  // 📤 Wyślij odbiorcy
+  if (interaction.customId === 'send_to_receiver') {
+    if (interaction.user.id !== data.sender)
+      return interaction.reply({ content: '❌ Nie możesz użyć tego przycisku — tylko nadawca może wysłać środki.', ephemeral: true });
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFD700')
+      .setDescription('```💛 DUKAAN MM```\n\n📩 Odbiorco, podaj numer telefonu, na który mają zostać wysłane środki.');
+
+    await interaction.channel.send({ content: `<@${data.receiver}>`, embeds: [embed] });
+    return interaction.reply({ content: '📤 Powiadomiono odbiorcę o podaniu numeru telefonu.', ephemeral: true });
   }
 });
 
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isButton()) return;
-  const { customId, channel, user } = interaction;
-  const ticketId = channel.id;
-  const session = sessions.get(ticketId);
-  if (!session) return;
+// ---------------- NADAWCA PODAJE KWOTĘ ----------------
+client.on(Events.MessageCreate, async message => {
+  const ticketId = message.channel.id;
+  const data = mmData.get(ticketId);
+  if (!data || !data.sender || !data.receiver || data.amount) return;
 
-  if (customId === "sender") {
-    session.senderId = user.id;
-    await interaction.reply({
-      content: `🔸 ${user} ustawiono jako **nadawcę**.`,
-      ephemeral: true,
-    });
-  }
+  if (message.author.id !== data.sender) return;
+  const kwota = message.content.trim();
+  if (!kwota.match(/^\d+(zł)?$/i)) return message.reply('❌ Podaj poprawną kwotę, np. `123zł`.');
 
-  if (customId === "receiver") {
-    session.receiverId = user.id;
-    await interaction.reply({
-      content: `🔹 ${user} ustawiono jako **odbiorcę**.`,
-      ephemeral: true,
-    });
-  }
+  data.amount = kwota;
+  mmData.set(ticketId, data);
 
-  if (customId === "confirm") {
-    if (!session.senderId || !session.receiverId)
-      return interaction.reply({
-        content: "⚠️ Obie strony muszą wybrać role przed potwierdzeniem.",
-        ephemeral: true,
-      });
-    await interaction.reply({
-      content:
-        "✅ Role potwierdzone! Nadawca może teraz wpisać kwotę w formacie np. `475zł`.",
-      ephemeral: true,
-    });
-  }
+  const embed = new EmbedBuilder()
+    .setColor('#FFD700')
+    .setDescription(
+      `\`\`\`💛 DUKAAN MM\`\`\`\n📱 Wyślij środki na numer: **698 962 262**\n💰 Kwota: **${data.amount}**\n⏳ Oczekiwanie na przesłanie środków…`
+    );
 
-  if (customId === "sendToReceiver") {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('copy_number').setLabel('📋 Skopiuj numer').setStyle(ButtonStyle.Secondary)
+  );
+
+  await message.channel.send({ content: `<@${data.sender}>`, embeds: [embed], components: [row] });
+});
+
+// ---------------- !detect ----------------
+client.on(Events.MessageCreate, async message => {
+  if (!message.content.startsWith('!detect') || message.author.bot) return;
+  const args = message.content.split(' ');
+  const amount = args[1];
+  if (!amount) return message.reply('❌ Podaj kwotę, np. `!detect 475zł`.');
+
+  const ticketChannelId = [...mmData.keys()].find(id => mmData.get(id).amount === amount);
+  if (!ticketChannelId) return message.reply('❌ Nie znaleziono pasującej transakcji.');
+
+  const ticketChannel = message.guild.channels.cache.get(ticketChannelId);
+  const data = mmData.get(ticketChannelId);
+
+  const embed = new EmbedBuilder()
+    .setColor('#FFD700')
+    .setDescription(
+      `\`\`\`💛 DUKAAN MM\`\`\`\n💰 Wykryto przesłane środki.\n📦 Kwota: **${amount}**`
+    );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('send_to_receiver').setLabel('📤 Wyślij odbiorcy').setStyle(ButtonStyle.Success)
+  );
+
+  await ticketChannel.send({ content: `<@${data.sender}>`, embeds: [embed], components: [row] });
+});
+
+// ---------------- ODBIORCA PODAJE NUMER ----------------
+client.on(Events.MessageCreate, async message => {
+  const ticketId = message.channel.id;
+  const data = mmData.get(ticketId);
+  if (!data || !data.receiver || data.phone) return;
+
+  if (message.author.id !== data.receiver) return;
+
+  const phone = message.content.trim();
+  if (!phone.match(/^\d{3}\s?\d{3}\s?\d{3}$/))
+    return message.reply('❌ Podaj poprawny numer telefonu w formacie `123 456 789`.');
+
+  data.phone = phone;
+  mmData.set(ticketId, data);
+  return message.reply(`✅ Numer zapisany: **${phone}**`);
+});
+
+// ---------------- !finalize ----------------
+client.on(Events.MessageCreate, async message => {
+  if (!message.content.startsWith('!finalize') || message.author.bot) return;
+
+  for (const [id, data] of mmData) {
+    if (!data.phone) continue;
+    const ticketChannel = message.guild.channels.cache.get(id);
+
     const embed = new EmbedBuilder()
-      .setColor(YELLOW)
+      .setColor('#FFD700')
       .setDescription(
-        `${HEADER}\n\n📱 **Odbiorco**, podaj numer telefonu, na który mają zostać wysłane środki.`
+        `\`\`\`💛 DUKAAN MM\`\`\`\n💸 Środki zostały wysłane na numer: **${data.phone}**\n⏳ Środki zostaną wysłane do 2 min`
       );
-    await channel.send({ content: `<@${session.receiverId}>`, embeds: [embed] });
-    await interaction.reply({ content: "✅ Wysłano prośbę o numer.", ephemeral: true });
+
+    await ticketChannel.send({ embeds: [embed] });
+    mmData.delete(id);
   }
 });
 
