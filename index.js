@@ -23,16 +23,20 @@ client.on(Events.MessageCreate, async message => {
   const ticketChannel = message.guild.channels.cache.get(ticketChannelId);
   if (!ticketChannel) return message.reply('❌ Nie znaleziono kanału ticketu.');
 
-  mmData.set(ticketChannelId, { sender: null, receiver: null, amount: null, phone: null });
+  // Dodajemy pole confirmed dla potwierdzenia ról
+  mmData.set(ticketChannelId, { sender: null, receiver: null, amount: null, phone: null, confirmed: [] });
 
   const embed = new EmbedBuilder()
     .setColor('#FFD700')
-    .setDescription('```💛 DUKAAN MM```\n\nWybierz swoją rolę w tej transakcji:')
+    .setDescription(
+      '```💛 DUKAAN MM```\n\nWybierz swoją rolę poniżej:\n📦 Nadawca - osoba wysyłająca środki\n📨 Odbiorca - osoba otrzymująca środki'
+    )
     .setFooter({ text: 'DUKAAN MM' });
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('sender').setLabel('📤 Nadawca').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('receiver').setLabel('📥 Odbiorca').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('sender').setLabel('📦 Nadawca').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('receiver').setLabel('📨 Odbiorca').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('confirm_role').setLabel('✅ Potwierdź').setStyle(ButtonStyle.Success)
   );
 
   await ticketChannel.send({ embeds: [embed], components: [row] });
@@ -58,6 +62,29 @@ client.on(Events.InteractionCreate, async interaction => {
     data.receiver = interaction.user.id;
     mmData.set(ticketId, data);
     return interaction.reply({ content: `✅ ${interaction.user} został oznaczony jako **ODBIORCA**.`, ephemeral: false });
+  }
+
+  if (interaction.customId === 'confirm_role') {
+    // sprawdzamy czy użytkownik wybrał rolę
+    if (interaction.user.id !== data.sender && interaction.user.id !== data.receiver) {
+      return interaction.reply({ content: '❌ Najpierw wybierz swoją rolę.', ephemeral: true });
+    }
+
+    // sprawdzamy, czy użytkownik już potwierdził
+    if (data.confirmed.includes(interaction.user.id)) {
+      return interaction.reply({ content: '✅ Już potwierdziłeś swoją rolę.', ephemeral: true });
+    }
+
+    // dodajemy użytkownika do listy potwierdzonych
+    data.confirmed.push(interaction.user.id);
+    mmData.set(ticketId, data);
+
+    // jeśli oboje potwierdzili
+    if (data.sender && data.receiver && data.confirmed.length === 2) {
+      await interaction.reply({ content: '✅ Obie role zostały potwierdzone! Możecie kontynuować transakcję.', ephemeral: false });
+    } else {
+      await interaction.reply({ content: '✅ Rola została potwierdzona! Czekamy na drugiego użytkownika.', ephemeral: true });
+    }
   }
 
   // 📋 Skopiuj numer
