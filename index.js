@@ -86,7 +86,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const embed2 = new EmbedBuilder()
         .setColor('#FFD700')
         .setDescription(
-          '```💛 DUKAAN MM```\n\nObie role zostały potwierdzone!\n📱 Nadawca może teraz podać kwotę, a Odbiorca numer telefonu.'
+          '```💛 DUKAAN MM```\n\nObie role zostały potwierdzone!\n📱 Nadawca może teraz podać kwotę np.123zł'
         );
 
       await interaction.channel.send({ embeds: [embed2] });
