@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Partials, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, Events } from 'discord.js';
+import express from 'express';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -23,7 +24,6 @@ client.on(Events.MessageCreate, async message => {
   const ticketChannel = message.guild.channels.cache.get(ticketChannelId);
   if (!ticketChannel) return message.reply('❌ Nie znaleziono kanału ticketu.');
 
-  // Dodajemy pole confirmed dla potwierdzenia ról
   mmData.set(ticketChannelId, { sender: null, receiver: null, amount: null, phone: null, confirmed: [] });
 
   const embed = new EmbedBuilder()
@@ -65,21 +65,32 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 
   if (interaction.customId === 'confirm_role') {
-    // sprawdzamy czy użytkownik wybrał rolę
     if (interaction.user.id !== data.sender && interaction.user.id !== data.receiver) {
       return interaction.reply({ content: '❌ Najpierw wybierz swoją rolę.', ephemeral: true });
     }
 
-    // sprawdzamy, czy użytkownik już potwierdził
     if (data.confirmed.includes(interaction.user.id)) {
       return interaction.reply({ content: '✅ Już potwierdziłeś swoją rolę.', ephemeral: true });
     }
 
-    // dodajemy użytkownika do listy potwierdzonych
     data.confirmed.push(interaction.user.id);
     mmData.set(ticketId, data);
 
-    // jeśli oboje potwierdzili
+    // Zmieniamy stan przycisku Potwierdź tylko dla klikającego użytkownika
+    const newRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('sender').setLabel('📦 Nadawca').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('receiver').setLabel('📨 Odbiorca').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('confirm_role')
+        .setLabel('✅ Potwierdź')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(data.confirmed.includes(interaction.user.id))
+    );
+
+    if (interaction.message.editable) {
+      await interaction.message.edit({ components: [newRow] });
+    }
+
     if (data.sender && data.receiver && data.confirmed.length === 2) {
       await interaction.reply({ content: '✅ Obie role zostały potwierdzone! Możecie kontynuować transakcję.', ephemeral: false });
     } else {
@@ -87,7 +98,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
-  // 📋 Skopiuj numer
   if (interaction.customId === 'copy_number') {
     return interaction.reply({
       content: '💛 DUKAAN MM\nNumer do wysłania środków: **698 962 262**',
@@ -95,7 +105,6 @@ client.on(Events.InteractionCreate, async interaction => {
     });
   }
 
-  // 📤 Wyślij odbiorcy
   if (interaction.customId === 'send_to_receiver') {
     if (interaction.user.id !== data.sender)
       return interaction.reply({ content: '❌ Nie możesz użyć tego przycisku — tylko nadawca może wysłać środki.', ephemeral: true });
@@ -197,4 +206,17 @@ client.on(Events.MessageCreate, async message => {
   }
 });
 
+// ---------------- EXPRESS SERVER DO RENDER WEB ----------------
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Bot Discord działa poprawnie!');
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Serwer nasłuchuje na porcie ${PORT}`);
+});
+
+// ---------------- LOGIN BOTA ----------------
 client.login(process.env.TOKEN);
